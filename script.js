@@ -16,9 +16,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     gsap.registerPlugin(ScrollTrigger);
 
-    // FIX: Single tick — removed duplicate requestAnimationFrame loop
+    // FIX: Single tick — optimized for smoothness
     gsap.ticker.add((time) => { lenis.raf(time * 1000); });
-    gsap.ticker.lagSmoothing(0);
+    gsap.ticker.lagSmoothing(1000, 16); // Standard smoothing for better jitter handling
     lenis.on('scroll', ScrollTrigger.update);
 
     // 2. Custom Cursor
@@ -74,8 +74,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const canvas = document.getElementById('smoke-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-        window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
         let particles = [];
+        window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; particles = []; });
 
         function createParticle() {
             if (Math.random() > 0.4) {
@@ -110,7 +110,8 @@ document.addEventListener("DOMContentLoaded", () => {
         .to(".hero-title",    { y: 0, opacity: 1, duration: 1.2, ease: "power4.out" })
         .to(".hero-subtitle", { y: 0, opacity: 1, duration: 1,   ease: "power3.out" }, "-=0.8")
         .to(".hero-desc",     { opacity: 1, duration: 1, y: -10, ease: "power2.out" }, "-=0.6")
-        .fromTo(".btn-primary", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, "-=0.4");
+        .fromTo(".btn-primary", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, "-=0.4")
+        .to(".scroll-indicator", { opacity: 1, y: 0, duration: 1, ease: "power2.out" }, "-=0.2");
 
     // 5. Horizontal Scroll — Services
     const servicesSection   = document.querySelector('.services');
@@ -128,14 +129,50 @@ document.addEventListener("DOMContentLoaded", () => {
                 invalidateOnRefresh: true,
                 onUpdate: (self) => {
                     const activeIndex = Math.min(Math.floor(self.progress * serviceCards.length * 1.5), serviceCards.length - 1);
-                    serviceCards.forEach((card, i) => card.classList.toggle('active', i === activeIndex));
+                    serviceCards.forEach((card, i) => {
+                        if (i === activeIndex && !card.classList.contains('active')) {
+                            const priceEl = card.querySelector('.card-price');
+                            if (priceEl && !priceEl.dataset.animated) {
+                                let match = priceEl.innerText.match(/\$(\d+)/);
+                                if (match) {
+                                    let target = parseInt(match[1]);
+                                    let obj = { val: 0 };
+                                    gsap.to(obj, { val: target, duration: 1.5, ease: "power2.out", onUpdate: () => {
+                                        priceEl.innerText = priceEl.innerText.replace(/\$\d+/, '$' + Math.floor(obj.val));
+                                    }});
+                                    priceEl.dataset.animated = "true";
+                                }
+                            }
+                        }
+                        card.classList.toggle('active', i === activeIndex);
+                    });
                 }
             }
         });
-        setTimeout(() => { serviceCards[0].classList.add('active'); }, 500);
+        setTimeout(() => { 
+            serviceCards[0].classList.add('active'); 
+            const priceEl = serviceCards[0].querySelector('.card-price');
+            if (priceEl && !priceEl.dataset.animated) {
+                let match = priceEl.innerText.match(/\$(\d+)/);
+                if (match) {
+                    let target = parseInt(match[1]);
+                    let obj = { val: 0 };
+                    gsap.to(obj, { val: target, duration: 1.5, ease: "power2.out", onUpdate: () => {
+                        priceEl.innerText = priceEl.innerText.replace(/\$\d+/, '$' + Math.floor(obj.val));
+                    }});
+                    priceEl.dataset.animated = "true";
+                }
+            }
+        }, 500);
     } else {
         serviceCards.forEach(card => card.classList.add('active'));
     }
+
+    // Gallery Header Fade-in
+    gsap.fromTo(".section-header h2", { opacity: 0, y: 30 }, {
+        opacity: 1, y: 0, duration: 1, ease: "power3.out",
+        scrollTrigger: { trigger: ".section-header", start: "top 85%" }
+    });
 
     // 6. Gallery Parallax
     const bentoItems = gsap.utils.toArray('.img-parallax img, .img-parallax video');
@@ -186,6 +223,25 @@ document.addEventListener("DOMContentLoaded", () => {
                 mobileMenu.classList.remove('open');
                 navToggle.classList.remove('open');
             });
+        });
+    }
+
+    // 11. Performance Optimization for Videos
+    const videos = document.querySelectorAll('video');
+    if ('IntersectionObserver' in window) {
+        const videoObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const video = entry.target;
+                if (entry.isIntersecting) {
+                    video.play().catch(e => console.log('Video autoplay prevented', e));
+                } else {
+                    video.pause();
+                }
+            });
+        }, { rootMargin: '200px' });
+        
+        videos.forEach(video => {
+            videoObserver.observe(video);
         });
     }
 
